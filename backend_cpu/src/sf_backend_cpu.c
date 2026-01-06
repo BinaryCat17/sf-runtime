@@ -1,7 +1,6 @@
 #include <sionflow/backend_cpu/sf_backend_cpu.h>
 #include <sionflow/ops/sf_ops_core.h>
 #include <sionflow/isa/sf_opcodes.h>
-#include <sionflow/isa/sf_builtins.h>
 #include <sionflow/isa/sf_state.h>
 #include <sionflow/isa/sf_exec_ctx.h>
 #include <sionflow/base/sf_thread_pool.h>
@@ -263,28 +262,14 @@ static void prepare_registers(sf_backend_cpu_worker_state* state, const sf_cpu_p
             continue;
         }
 
-        if (flags & SF_TENSOR_FLAG_GENERATOR) {
-            sf_builtin_id bid = (sf_builtin_id)prog->builtin_ids[i];
-            if (bid == SF_BUILTIN_INDEX) {
-                bool is_vector = (ctx->reg_info[i].ndim > batch->ndim);
-                size_t vec_size = is_vector ? (size_t)ctx->reg_info[i].shape[ctx->reg_info[i].ndim - 1] : 1;
-                size_t bytes = count * vec_size * sf_dtype_size(ctx->reg_info[i].dtype);
-                void* mem = sf_exec_ctx_scratch_alloc(ctx, bytes);
-                if (mem) {
-                    sf_generate_index_chunk(mem, ctx->reg_info[i].dtype, (u32)count, (u32)start_idx, prog->builtin_axes[i], is_vector, batch->ndim, batch->domain_shape);
-                    ctx->reg_ptrs[i] = mem;
-                }
-            }
+        // Buffer-based (Symbol, Constant, or Scratch)
+        if (t->buffer && t->buffer->data) {
+            ctx->reg_ptrs[i] = (u8*)t->buffer->data + t->byte_offset + (start_idx * ctx->reg_strides[i]);
         } else {
-            // Buffer-based (Symbol, Constant, or Scratch)
-            if (t->buffer && t->buffer->data) {
-                ctx->reg_ptrs[i] = (u8*)t->buffer->data + t->byte_offset + (start_idx * ctx->reg_strides[i]);
-            } else {
-                ctx->reg_ptrs[i] = NULL;
-                if (ctx->error == SF_ERROR_NONE) {
-                    SF_LOG_ERROR("Backend: Reg %u (%s) has NULL buffer data (Flags: 0x%X)", i, find_reg_name(prog, i), flags);
-                    ctx->error = SF_ERROR_RUNTIME;
-                }
+            ctx->reg_ptrs[i] = NULL;
+            if (ctx->error == SF_ERROR_NONE) {
+                SF_LOG_ERROR("Backend: Reg %u (%s) has NULL buffer data (Flags: 0x%X)", i, find_reg_name(prog, i), flags);
+                ctx->error = SF_ERROR_RUNTIME;
             }
         }
     }
@@ -435,6 +420,23 @@ static void sf_backend_cpu_dispatch(void* backend_state, const struct sf_program
             }
         }
     }
+}
+
+// --- System Kernels ---
+
+void op_INDEX_X(sf_exec_ctx* ctx, const struct sf_instruction* inst) {
+    u16 r_out = inst->dest_idx;
+    sf_generate_index_chunk(ctx->reg_ptrs[r_out], ctx->reg_info[r_out].dtype, ctx->batch_size, ctx->linear_offset, 0, false, ctx->ndim, ctx->domain_shape);
+}
+
+void op_INDEX_Y(sf_exec_ctx* ctx, const struct sf_instruction* inst) {
+    u16 r_out = inst->dest_idx;
+    sf_generate_index_chunk(ctx->reg_ptrs[r_out], ctx->reg_info[r_out].dtype, ctx->batch_size, ctx->linear_offset, 1, false, ctx->ndim, ctx->domain_shape);
+}
+
+void op_INDEX_Z(sf_exec_ctx* ctx, const struct sf_instruction* inst) {
+    u16 r_out = inst->dest_idx;
+    sf_generate_index_chunk(ctx->reg_ptrs[r_out], ctx->reg_info[r_out].dtype, ctx->batch_size, ctx->linear_offset, 2, false, ctx->ndim, ctx->domain_shape);
 }
 
 static void sf_backend_cpu_shutdown(void* backend_state) {
