@@ -59,23 +59,17 @@ static sf_program* _load_program_from_mem(const u8* data, size_t len, sf_arena* 
     size_t n = head->tensor_count;
     size_t sz_info  = sizeof(sf_type_info) * n;
     size_t sz_data  = sizeof(void*) * n;
-    size_t sz_bid   = sizeof(uint8_t) * n;
-    size_t sz_axis  = sizeof(uint8_t) * n;
     size_t sz_flags = sizeof(uint8_t) * n;
     
-    u8* block = SF_ARENA_PUSH(arena, u8, sz_info + sz_data + sz_bid + sz_axis + sz_flags);
+    u8* block = SF_ARENA_PUSH(arena, u8, sz_info + sz_data + sz_flags);
     
     prog->tensor_infos = (sf_type_info*)block;
     prog->tensor_data  = (void**)(block + sz_info);
-    prog->builtin_ids  = (uint8_t*)(block + sz_info + sz_data);
-    prog->builtin_axes = (uint8_t*)(block + sz_info + sz_data + sz_bid);
-    prog->tensor_flags = (uint8_t*)(block + sz_info + sz_data + sz_bid + sz_axis);
+    prog->tensor_flags = (uint8_t*)(block + sz_info + sz_data);
     
     for (u32 i = 0; i < n; ++i) {
         sf_bin_tensor_desc* d = &descs[i];
         sf_type_info_init_contiguous(&prog->tensor_infos[i], (sf_dtype)d->dtype, d->shape, d->ndim);
-        prog->builtin_ids[i] = d->builtin_id;
-        prog->builtin_axes[i] = d->builtin_axis;
         prog->tensor_flags[i] = d->flags;
     }
 
