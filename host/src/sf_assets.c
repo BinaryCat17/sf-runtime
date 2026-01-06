@@ -113,7 +113,7 @@ bool sf_loader_load_font(sf_engine* engine, const char* name, const char* path, 
     unsigned char* ttf = NULL;
     bool ttf_owned = false;
     
-    // ... (cartridge loading logic) ...
+    const char* ext = sf_path_get_ext(path);
     if (strcmp(ext, "sfc") == 0 || strcmp(ext, "bin") == 0) {
         sf_cartridge* cart = sf_cartridge_open(path);
         if (cart) {
@@ -182,10 +182,6 @@ bool sf_loader_load_font(sf_engine* engine, const char* name, const char* path, 
              }
         }
     }
-    
-    free(a); free(inf); if (ttf_owned) free(ttf); 
-    return true;
-}
     
     free(a); free(inf); if (ttf_owned) free(ttf); 
     return true;

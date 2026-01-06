@@ -14,20 +14,27 @@ void sf_state_reset(sf_state* state, const sf_program* prog, sf_arena* arena, sf
     
     state->register_count = prog->meta.tensor_count;
     
-    // Consolidate allocations: registers + ownership flags
+    // Consolidate allocations: registers + ownership flags + task_strides
     size_t regs_sz = sizeof(sf_tensor) * state->register_count;
     size_t flags_sz = sizeof(uint8_t) * state->register_count;
-    u8* block = SF_ARENA_PUSH(arena, u8, regs_sz + flags_sz);
+    size_t strides_sz = sizeof(int32_t) * state->register_count;
+    u8* block = SF_ARENA_PUSH(arena, u8, regs_sz + flags_sz + strides_sz);
     
     if (!block) {
         SF_LOG_ERROR("Engine: Failed to allocate registers for kernel state. Arena OOM.");
         state->register_count = 0;
         state->registers = NULL;
         state->ownership_flags = NULL;
+        state->task_strides = NULL;
         return;
     }
     
+    state->registers = (sf_tensor*)block;
+    state->ownership_flags = (uint8_t*)(block + regs_sz);
+    state->task_strides = (int32_t*)(block + regs_sz + flags_sz);
+    
     memset(state->ownership_flags, 0, state->register_count);
+    memset(state->task_strides, 0, strides_sz);
 
     for (u32 i = 0; i < state->register_count; ++i) {
         sf_type_info* info_prog = &prog->tensor_infos[i];
@@ -170,9 +177,20 @@ void sf_engine_dispatch(sf_engine* engine) {
             if (engine->backend.dispatch) {
                 ker->state.global_error_ptr = &engine->error_code;
                 for (u32 t = 0; t < ker->program->meta.task_count; ++t) {
-                    sf_task* task = &ker->program->tasks[t];
+                    const sf_task* task = &ker->program->tasks[t];
                     const sf_tensor* task_domain = &ker->state.registers[task->domain_reg];
-                    engine->backend.dispatch(engine->backend.state, ker->program, &ker->state, task_domain, task->start_inst, task->inst_count);
+                    size_t domain_elements = sf_tensor_count(task_domain);
+
+                    // Pre-calculate strides for this task
+                    for (u32 b = 0; b < task->binding_count; ++b) {
+                        u16 reg_idx = ker->program->bindings[task->binding_offset + b].reg_idx;
+                        sf_tensor* reg = &ker->state.registers[reg_idx];
+                        size_t reg_elements = sf_tensor_count(reg);
+                        i32 elem_stride = sf_shape_calc_linear_stride(reg_elements, domain_elements);
+                        ker->state.task_strides[reg_idx] = elem_stride * (i32)sf_dtype_size(reg->info.dtype);
+                    }
+
+                    engine->backend.dispatch(engine->backend.state, ker->program, &ker->state, task_domain, task);
                     if (sf_atomic_load(&engine->error_code) != 0) goto end_dispatch;
                 }
             }
