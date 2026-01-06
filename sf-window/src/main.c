@@ -11,7 +11,7 @@ int main(int argc, char** argv) {
     sf_log_set_global_level(SF_LOG_LEVEL_INFO);
 
     if (argc < 2) {
-        printf("Usage: sf-window <app.mfapp> [--log-interval <seconds>] [--trace] [--debug]\n");
+        printf("Usage: sf-window <cartridge.sfc> [--log-interval <seconds>] [--trace] [--debug]\n");
         return 1;
     }
 

@@ -22,7 +22,6 @@ target_link_libraries(host_core
     PUBLIC
         SionFlow::engine
     PRIVATE 
-        SionFlow::compiler
         SionFlow::backend_cpu
         SionFlow::base
 )

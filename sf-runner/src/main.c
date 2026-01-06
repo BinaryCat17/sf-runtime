@@ -6,7 +6,7 @@
 #include <sionflow/base/sf_log.h>
 
 static void print_help(const char* prog) {
-    printf("Usage: %s <app.mfapp> [options]\n", prog);
+    printf("Usage: %s <cartridge.sfc> [options]\n", prog);
     printf("Options:\n");
     printf("  --frames <n>   Number of frames to execute (default: 1)\n");
     printf("  --trace        Enable trace logging\n");

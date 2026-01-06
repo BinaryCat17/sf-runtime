@@ -10,7 +10,6 @@ find_package(Stb REQUIRED)
 
 # Dependencies
 find_package(sf-spec REQUIRED)
-find_package(sf-compiler REQUIRED)
 
 # Modules
 add_subdirectory(ops)
