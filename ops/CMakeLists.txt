@@ -1,8 +1,8 @@
 # --- Kernel Generation ---
 find_package(Python3 REQUIRED)
 set(ISA_GEN_PY "${CMAKE_CURRENT_SOURCE_DIR}/../../sf-spec/tools/isa_gen.py")
-set(ISA_JSON "${CMAKE_CURRENT_SOURCE_DIR}/../../sf-spec/isa/isa.json")
-set(CPU_SPEC "${CMAKE_CURRENT_SOURCE_DIR}/../../sf-runtime/backend_cpu/cpu_spec.json")
+set(ISA_JSON "${CMAKE_CURRENT_SOURCE_DIR}/../../sf-spec/tools/metadata/isa.json")
+set(CPU_SPEC "${CMAKE_CURRENT_SOURCE_DIR}/../tools/metadata/cpu_spec.json")
 set(KERNELS_TMPL "${CMAKE_CURRENT_SOURCE_DIR}/../tools/templates/sf_ops_cpu_auto.c.j2")
 set(KERNELS_C "${CMAKE_CURRENT_SOURCE_DIR}/../tools/generated/sf_ops_auto.c")
 set(DISPATCH_TMPL "${CMAKE_CURRENT_SOURCE_DIR}/../tools/templates/sf_ops_auto_dispatch.c.j2")
