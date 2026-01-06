@@ -5,6 +5,7 @@ add_library(ops STATIC
     src/sf_ops_logic.c
     src/sf_ops_matrix.c
     src/sf_ops_state.c
+    src/sf_ops_system.c
 )
 add_library(SionFlow::ops ALIAS ops)
 
