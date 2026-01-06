@@ -1,6 +1,7 @@
 #include <sionflow/backend_cpu/sf_backend_cpu.h>
 #include <sionflow/ops/sf_ops_core.h>
 #include <sionflow/isa/sf_opcodes.h>
+#include <sionflow/isa/sf_builtins.h>
 #include <sionflow/isa/sf_state.h>
 #include <sionflow/isa/sf_exec_ctx.h>
 #include <sionflow/base/sf_thread_pool.h>
