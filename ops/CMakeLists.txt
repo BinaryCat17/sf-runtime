@@ -1,4 +1,4 @@
-add_library(sf_ops STATIC
+add_library(ops STATIC
     src/sf_ops_array.c
     src/sf_ops_core.c
     src/sf_ops_math.c
@@ -6,14 +6,16 @@ add_library(sf_ops STATIC
     src/sf_ops_matrix.c
     src/sf_ops_state.c
 )
-add_library(SionFlow::ops ALIAS sf_ops)
+add_library(SionFlow::ops ALIAS ops)
 
-target_include_directories(sf_ops 
-    PUBLIC include
+target_include_directories(ops 
+    PUBLIC 
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
     PRIVATE src
 )
 
-target_link_libraries(sf_ops 
+target_link_libraries(ops 
     PUBLIC 
         SionFlow::isa
         m

@@ -2,6 +2,8 @@
   "name": "sf-runtime",
   "version": "0.1.0",
   "dependencies": [
+    "sf-spec",
+    "sf-compiler",
     "sdl2",
     "stb"
   ]

@@ -1,16 +1,19 @@
-add_library(sf_engine STATIC
+add_library(engine STATIC
     src/sf_engine.c
     src/sf_pipeline.c
 )
-add_library(SionFlow::engine ALIAS sf_engine)
+add_library(SionFlow::engine ALIAS engine)
 
-target_include_directories(sf_engine 
-    PUBLIC include
+target_include_directories(engine 
+    PUBLIC 
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
     PRIVATE src
 )
 
-target_link_libraries(sf_engine 
+target_link_libraries(engine 
     PUBLIC 
-    SionFlow::base
-    SionFlow::isa
+        SionFlow::base
+        SionFlow::isa
 )
+
