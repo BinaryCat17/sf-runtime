@@ -8,10 +8,20 @@
 // --- Helpers ---
 
 int32_t find_resource_idx(sf_engine* engine, u32 name_hash) {
+    if (!engine || !engine->resources) return -1;
     for (u32 i = 0; i < engine->resource_count; ++i) {
         if (engine->resources[i].name_hash == name_hash) return (int32_t)i;
     }
     return -1;
+}
+
+static bool _check_resource_compatibility(const sf_resource_inst* res, sf_dtype dtype, const int32_t* shape, uint8_t ndim) {
+    if (res->desc.info.dtype != dtype) return false;
+    if (res->desc.info.ndim != ndim) return false;
+    for (int i = 0; i < ndim; ++i) {
+        if (res->desc.info.shape[i] != shape[i]) return false;
+    }
+    return true;
 }
 
 int32_t find_symbol_idx(const sf_program* prog, u32 name_hash) {
@@ -141,12 +151,18 @@ void sf_engine_bind_cartridge(sf_engine* engine, sf_program** programs, const ch
             if (!(sym->flags & (SF_SYMBOL_FLAG_INPUT | SF_SYMBOL_FLAG_OUTPUT))) continue;
 
             int32_t r_idx = find_resource_idx(engine, sym->name_hash);
+            sf_type_info* t = &prog->tensor_infos[sym->register_idx];
+            
             if (r_idx != -1) {
+                if (!_check_resource_compatibility(&engine->resources[r_idx], t->dtype, t->shape, t->ndim)) {
+                    SF_LOG_FATAL("Pipeline: Resource '%s' has incompatible definitions in different programs!", sym->name);
+                    sf_atomic_store(&engine->error_code, SF_ENGINE_ERR_RUNTIME);
+                    return;
+                }
                 engine->resources[r_idx].flags |= sym->flags;
                 continue;
             }
 
-            sf_type_info* t = &prog->tensor_infos[sym->register_idx];
             _setup_resource_inst(&engine->resources[engine->resource_count++], sym->name, sym->provider[0] ? sym->provider : NULL, t->dtype, t->shape, t->ndim, sym->flags, &engine->arena);
         }
     }
@@ -210,10 +226,18 @@ void sf_engine_bind_pipeline(sf_engine* engine, const sf_pipeline_desc* pipe, sf
             int32_t s_idx = find_symbol_idx(k->program, sf_fnv1a_hash(d->bindings[b].kernel_port));
             int32_t r_idx = find_resource_idx(engine, sf_fnv1a_hash(d->bindings[b].global_resource));
             if (s_idx != -1 && r_idx != -1) {
+                sf_bin_symbol* sym = &k->program->symbols[s_idx];
+                sf_type_info* t_info = &k->program->tensor_infos[sym->register_idx];
+                if (!_check_resource_compatibility(&engine->resources[r_idx], t_info->dtype, t_info->shape, t_info->ndim)) {
+                    SF_LOG_FATAL("Pipeline: Kernel '%s' port '%s' is incompatible with resource '%s'", k->id, d->bindings[b].kernel_port, d->bindings[b].global_resource);
+                    sf_atomic_store(&engine->error_code, SF_ENGINE_ERR_RUNTIME);
+                    return;
+                }
+
                 sf_kernel_binding* kb = &k->bindings[k->binding_count++];
-                kb->local_reg = (u16)k->program->symbols[s_idx].register_idx;
+                kb->local_reg = (u16)sym->register_idx;
                 kb->global_res = (u16)r_idx;
-                kb->flags = k->program->symbols[s_idx].flags;
+                kb->flags = sym->flags;
             }
         }
         for (u32 s = 0; s < k->program->meta.symbol_count; ++s) {

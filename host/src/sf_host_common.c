@@ -114,13 +114,16 @@ void sf_host_app_update_inputs(sf_host_app* app, const sf_host_inputs* inputs) {
     }
 }
 
-int sf_host_app_init(sf_host_app* app, const sf_host_desc* desc) {
+int sf_host_app_init(sf_host_app* app, const sf_host_desc* desc, sf_backend backend) {
     if (!app || !desc) return -1;
     memset(app, 0, sizeof(sf_host_app));
     app->desc = *desc; 
 
-    sf_engine_desc engine_desc = { .arena_size = SF_MB(64), .heap_size = SF_MB(256) };
-    sf_loader_init_backend(&engine_desc.backend, desc->num_threads);
+    sf_engine_desc engine_desc = { 
+        .arena_size = SF_MB(64), 
+        .heap_size = SF_MB(256),
+        .backend = backend
+    };
 
     app->engine = sf_engine_create(&engine_desc);
     if (!app->engine) return -2;

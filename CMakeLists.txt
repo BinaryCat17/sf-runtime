@@ -12,14 +12,10 @@ find_package(Stb REQUIRED)
 find_package(sf-spec REQUIRED)
 
 # Modules
-add_subdirectory(ops)
-add_subdirectory(backend_cpu)
 add_subdirectory(engine)
 add_subdirectory(host)
 
 # Apps
-add_subdirectory(sf-runner)
-add_subdirectory(sf-window)
 
 # --- Installation & Export ---
 
@@ -27,7 +23,7 @@ include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
 # Install targets
-set(INSTALL_TARGETS ops backend_cpu engine host_core sf-runner sf-window)
+set(INSTALL_TARGETS engine host_core)
 if(TARGET host_sdl)
     list(APPEND INSTALL_TARGETS host_sdl)
 endif()
@@ -41,8 +37,6 @@ install(TARGETS ${INSTALL_TARGETS}
 )
 
 # Install headers
-install(DIRECTORY ops/include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
-install(DIRECTORY backend_cpu/include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(DIRECTORY engine/include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(DIRECTORY host/include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 

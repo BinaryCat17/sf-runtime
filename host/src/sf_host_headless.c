@@ -12,11 +12,11 @@ static void debug_print_resource_callback(const char* name, sf_tensor* t, void* 
     sf_tensor_print(name, t);
 }
 
-int sf_host_run_headless(const sf_host_desc* desc, int frames) {
+int sf_host_run_headless(const sf_host_desc* desc, sf_backend backend, int frames) {
     if (!desc) return 1;
 
     sf_host_app app;
-    if (sf_host_app_init(&app, desc) != 0) {
+    if (sf_host_app_init(&app, desc, backend) != 0) {
         SF_LOG_ERROR("Failed to initialize Host App");
         return 1;
     }

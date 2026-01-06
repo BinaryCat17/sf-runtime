@@ -55,7 +55,7 @@ static bool _sdl_process_events(bool* running, int* win_w, int* win_h, SDL_Windo
     return resized;
 }
 
-int sf_host_run(const sf_host_desc* desc) {
+int sf_host_run(const sf_host_desc* desc, sf_backend backend) {
     if (SDL_Init(SDL_INIT_VIDEO) != 0) return 1;
 
     u32 flags = SDL_WINDOW_SHOWN;
@@ -70,7 +70,7 @@ int sf_host_run(const sf_host_desc* desc) {
     SDL_Texture* texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING, desc->width, desc->height);
 
     sf_host_app app;
-    if (sf_host_app_init(&app, desc) != 0) { SDL_DestroyWindow(window); SDL_Quit(); return 1; }
+    if (sf_host_app_init(&app, desc, backend) != 0) { SDL_DestroyWindow(window); SDL_Quit(); return 1; }
 
     u32* frame_buffer = malloc((size_t)desc->width * desc->height * 4);
     bool running = true;

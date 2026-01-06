@@ -39,7 +39,7 @@ typedef struct {
 /**
  * @brief Initializes the host application context.
  */
-int sf_host_app_init(sf_host_app* app, const sf_host_desc* desc);
+int sf_host_app_init(sf_host_app* app, const sf_host_desc* desc, sf_backend backend);
 
 /**
  * @brief Updates all system resources (Time, Mouse, Res) in one go.

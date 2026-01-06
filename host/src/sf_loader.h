@@ -16,9 +16,6 @@
  * - Loading assets (Images, Fonts) into Engine resources
  */
 
-// --- Backend Setup ---
-void sf_loader_init_backend(sf_backend* backend, int num_threads);
-
 // --- Manifest Parsing ---
 int sf_app_load_config(const char* mfapp_path, sf_host_desc* out_desc);
 

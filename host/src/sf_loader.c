@@ -1,6 +1,5 @@
 #include "sf_loader.h"
 #include <sionflow/engine/sf_engine.h>
-#include <sionflow/backend_cpu/sf_backend_cpu.h>
 #include <sionflow/isa/sf_opcodes.h>
 #include <sionflow/host/sf_host_desc.h>
 #include <sionflow/base/sf_shape.h>
@@ -11,48 +10,59 @@
 #include <string.h>
 #include <stdlib.h>
 
-void sf_loader_init_backend(sf_backend* backend, int num_threads) {
-    if (!backend) return;
-    sf_backend_cpu_init(backend, num_threads);
-}
-
 static sf_program* _load_program_from_mem(const u8* data, size_t len, sf_arena* arena) {
     if (len < sizeof(sf_bin_header)) return NULL;
     
     sf_bin_header* head = (sf_bin_header*)data;
     sf_program* prog = SF_ARENA_PUSH(arena, sf_program, 1);
+    if (!prog) return NULL;
+
     prog->meta = *head;
     size_t offset = sizeof(sf_bin_header);
     
     // 1. Code
+    size_t code_sz = sizeof(sf_instruction) * head->instruction_count;
+    if (offset + code_sz > len) return NULL;
     prog->code = SF_ARENA_PUSH(arena, sf_instruction, head->instruction_count);
-    memcpy(prog->code, data + offset, sizeof(sf_instruction) * head->instruction_count);
-    offset += sizeof(sf_instruction) * head->instruction_count;
+    if (!prog->code) return NULL;
+    memcpy(prog->code, data + offset, code_sz);
+    offset += code_sz;
 
     // 2. Symbols
     if (head->symbol_count > 0) {
+        size_t sym_sz = sizeof(sf_bin_symbol) * head->symbol_count;
+        if (offset + sym_sz > len) return NULL;
         prog->symbols = SF_ARENA_PUSH(arena, sf_bin_symbol, head->symbol_count);
-        memcpy(prog->symbols, data + offset, sizeof(sf_bin_symbol) * head->symbol_count);
-        offset += sizeof(sf_bin_symbol) * head->symbol_count;
+        if (!prog->symbols) return NULL;
+        memcpy(prog->symbols, data + offset, sym_sz);
+        offset += sym_sz;
     } else prog->symbols = NULL;
 
     // 3. Tasks
     if (head->task_count > 0) {
+        size_t task_sz = sizeof(sf_task) * head->task_count;
+        if (offset + task_sz > len) return NULL;
         prog->tasks = SF_ARENA_PUSH(arena, sf_task, head->task_count);
-        memcpy(prog->tasks, data + offset, sizeof(sf_task) * head->task_count);
-        offset += sizeof(sf_task) * head->task_count;
+        if (!prog->tasks) return NULL;
+        memcpy(prog->tasks, data + offset, task_sz);
+        offset += task_sz;
     } else prog->tasks = NULL;
 
     // 4. Task Bindings
     if (head->binding_count > 0) {
+        size_t bind_sz = sizeof(sf_bin_task_binding) * head->binding_count;
+        if (offset + bind_sz > len) return NULL;
         prog->bindings = SF_ARENA_PUSH(arena, sf_bin_task_binding, head->binding_count);
-        memcpy(prog->bindings, data + offset, sizeof(sf_bin_task_binding) * head->binding_count);
-        offset += sizeof(sf_bin_task_binding) * head->binding_count;
+        if (!prog->bindings) return NULL;
+        memcpy(prog->bindings, data + offset, bind_sz);
+        offset += bind_sz;
     } else prog->bindings = NULL;
 
     // 5. Tensor Descriptors
+    size_t desc_sz = sizeof(sf_bin_tensor_desc) * head->tensor_count;
+    if (offset + desc_sz > len) return NULL;
     sf_bin_tensor_desc* descs = (sf_bin_tensor_desc*)(data + offset);
-    offset += sizeof(sf_bin_tensor_desc) * head->tensor_count;
+    offset += desc_sz;
 
     size_t n = head->tensor_count;
     size_t sz_info  = sizeof(sf_type_info) * n;
@@ -60,6 +70,7 @@ static sf_program* _load_program_from_mem(const u8* data, size_t len, sf_arena* 
     size_t sz_flags = sizeof(uint8_t) * n;
     
     u8* block = SF_ARENA_PUSH(arena, u8, sz_info + sz_data + sz_flags);
+    if (!block) return NULL;
     
     prog->tensor_infos = (sf_type_info*)block;
     prog->tensor_data  = (void**)(block + sz_info);
@@ -75,7 +86,9 @@ static sf_program* _load_program_from_mem(const u8* data, size_t len, sf_arena* 
     for (u32 i = 0; i < head->tensor_count; ++i) {
         if (descs[i].is_constant) {
             size_t bytes = sf_shape_calc_bytes(prog->tensor_infos[i].dtype, prog->tensor_infos[i].shape, prog->tensor_infos[i].ndim);
+            if (offset + bytes > len) return NULL;
             void* mem = SF_ARENA_PUSH(arena, u8, bytes);
+            if (!mem) return NULL;
             memcpy(mem, data + offset, bytes);
             prog->tensor_data[i] = mem;
             offset += bytes;

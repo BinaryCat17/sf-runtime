@@ -19,8 +19,13 @@ void sf_state_reset(sf_state* state, const sf_program* prog, sf_arena* arena, sf
     size_t flags_sz = sizeof(uint8_t) * state->register_count;
     u8* block = SF_ARENA_PUSH(arena, u8, regs_sz + flags_sz);
     
-    state->registers = (sf_tensor*)block;
-    state->ownership_flags = block + regs_sz;
+    if (!block) {
+        SF_LOG_ERROR("Engine: Failed to allocate registers for kernel state. Arena OOM.");
+        state->register_count = 0;
+        state->registers = NULL;
+        state->ownership_flags = NULL;
+        return;
+    }
     
     memset(state->ownership_flags, 0, state->register_count);
 
@@ -197,7 +202,10 @@ bool sf_engine_resize_resource(sf_engine* engine, const char* name, const int32_
     if (!engine || !name) return false;
     u32 hash = sf_fnv1a_hash(name);
     int32_t res_idx = find_resource_idx(engine, hash);
-    if (res_idx == -1) return false;
+    if (res_idx == -1) {
+        SF_LOG_ERROR("Engine: Cannot resize resource '%s' - not found.", name);
+        return false;
+    }
 
     sf_resource_inst* res = &engine->resources[res_idx];
     sf_allocator* alloc = (sf_allocator*)&engine->heap;

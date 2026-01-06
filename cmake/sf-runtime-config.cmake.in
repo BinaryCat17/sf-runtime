@@ -4,7 +4,6 @@ include(CMakeFindDependencyMacro)
 
 # Dependencies
 find_dependency(sf-spec)
-find_dependency(sf-compiler)
 find_dependency(SDL2)
 find_dependency(Stb)
 find_dependency(Threads)
