@@ -7,7 +7,6 @@
 // Description of a Global Resource (Blackboard Buffer)
 typedef struct {
     const char* name;
-    const char* provider; // Optional: "host.index", "host.time", etc.
     sf_dtype dtype;
     int32_t shape[SF_MAX_DIMS];
     uint8_t ndim;

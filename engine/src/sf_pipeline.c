@@ -16,10 +16,19 @@ int32_t find_resource_idx(sf_engine* engine, u32 name_hash) {
 }
 
 static bool _check_resource_compatibility(const sf_resource_inst* res, sf_dtype dtype, const int32_t* shape, uint8_t ndim) {
-    if (res->desc.info.dtype != dtype) return false;
-    if (res->desc.info.ndim != ndim) return false;
+    if (res->desc.info.dtype != dtype) {
+        SF_LOG_ERROR("Compatibility mismatch: dtype %d (res) vs %d (kernel)", res->desc.info.dtype, dtype);
+        return false;
+    }
+    if (res->desc.info.ndim != ndim) {
+        SF_LOG_ERROR("Compatibility mismatch: ndim %d (res) vs %d (kernel)", res->desc.info.ndim, ndim);
+        return false;
+    }
     for (int i = 0; i < ndim; ++i) {
-        if (res->desc.info.shape[i] != shape[i]) return false;
+        if (res->desc.info.shape[i] != shape[i]) {
+            SF_LOG_ERROR("Compatibility mismatch: shape[%d] %d (res) vs %d (kernel)", i, res->desc.info.shape[i], shape[i]);
+            return false;
+        }
     }
     return true;
 }
@@ -34,10 +43,9 @@ int32_t find_symbol_idx(const sf_program* prog, u32 name_hash) {
 
 // --- Internal Engine Logic ---
 
-static void _setup_resource_inst(sf_resource_inst* res, const char* name, const char* provider, sf_dtype dtype, const int32_t* shape, uint8_t ndim, uint8_t flags, sf_arena* arena) {
+static void _setup_resource_inst(sf_resource_inst* res, const char* name, sf_dtype dtype, const int32_t* shape, uint8_t ndim, uint8_t flags, sf_arena* arena) {
     res->name = sf_arena_strdup(arena, name);
     res->name_hash = sf_fnv1a_hash(res->name);
-    res->provider = provider ? sf_arena_strdup(arena, provider) : NULL;
     res->flags = flags;
     
     memset(&res->desc, 0, sizeof(sf_tensor));
@@ -163,7 +171,7 @@ void sf_engine_bind_cartridge(sf_engine* engine, sf_program** programs, const ch
                 continue;
             }
 
-            _setup_resource_inst(&engine->resources[engine->resource_count++], sym->name, sym->provider[0] ? sym->provider : NULL, t->dtype, t->shape, t->ndim, sym->flags, &engine->arena);
+            _setup_resource_inst(&engine->resources[engine->resource_count++], sym->name, t->dtype, t->shape, t->ndim, sym->flags, &engine->arena);
         }
     }
 
@@ -201,11 +209,11 @@ void sf_engine_bind_pipeline(sf_engine* engine, const sf_pipeline_desc* pipe, sf
     if (!engine || !pipe) return;
 
     // 1. Init Resources from Desc
-    engine->resources = (pipe->resource_count > 0) ? SF_ARENA_PUSH(&engine->arena, sf_resource_inst, pipe->resource_count) : NULL;
+    engine->resources = SF_ARENA_PUSH(&engine->arena, sf_resource_inst, pipe->resource_count);
     engine->resource_count = pipe->resource_count;
     for (u32 i = 0; i < pipe->resource_count; ++i) {
         sf_pipeline_resource* d = &pipe->resources[i];
-        _setup_resource_inst(&engine->resources[i], d->name, d->provider, d->dtype, d->shape, d->ndim, d->flags, &engine->arena);
+        _setup_resource_inst(&engine->resources[i], d->name, d->dtype, d->shape, d->ndim, d->flags, &engine->arena);
     }
 
     // 2. Init Kernels
