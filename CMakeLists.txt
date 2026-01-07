@@ -4,6 +4,12 @@ project(sf-runtime LANGUAGES C)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
+# Direct Linking: Search in build root if available
+if(DEFINED ENV{SIONFLOW_BUILD_ROOT})
+    list(APPEND CMAKE_PREFIX_PATH "$ENV{SIONFLOW_BUILD_ROOT}/sf-spec/x64-linux")
+    message(STATUS "Direct Linking: Added sf-spec build path to CMAKE_PREFIX_PATH")
+endif()
+
 # External dependencies
 find_package(SDL2 CONFIG REQUIRED)
 find_package(Stb REQUIRED)
@@ -34,6 +40,12 @@ install(TARGETS ${INSTALL_TARGETS}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)
+
+# Export targets for use from the build directory
+export(EXPORT SionFlowRuntimeTargets
+    FILE "${CMAKE_CURRENT_BINARY_DIR}/SionFlowRuntimeTargets.cmake"
+    NAMESPACE SionFlow::
 )
 
 # Install headers

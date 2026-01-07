@@ -14,10 +14,10 @@ void sf_state_reset(sf_state* state, const sf_program* prog, sf_arena* arena, sf
     
     state->register_count = prog->meta.tensor_count;
     
-    // Consolidate allocations: registers + ownership flags + task_strides
+    // Consolidate allocations: registers + ownership flags + task_strides (N-D)
     size_t regs_sz = sizeof(sf_tensor) * state->register_count;
     size_t flags_sz = sizeof(uint8_t) * state->register_count;
-    size_t strides_sz = sizeof(int32_t) * state->register_count;
+    size_t strides_sz = sizeof(int32_t) * state->register_count * SF_MAX_DIMS;
     u8* block = SF_ARENA_PUSH(arena, u8, regs_sz + flags_sz + strides_sz);
     
     if (!block) {
@@ -130,20 +130,13 @@ void sf_engine_destroy(sf_engine* engine) {
 }
 
 void sf_engine_reset(sf_engine* engine) {
-
     if (!engine) return;
 
     for (u32 i = 0; i < engine->kernel_count; ++i) {
-
         sf_state_shutdown(&engine->kernels[i].state, &engine->backend);
-
     }
 
     for (u32 i = 0; i < engine->resource_count; ++i) {
-
-
-
-
         if (engine->resources[i].buffers[0]) sf_buffer_free(engine->resources[i].buffers[0]);
         if (engine->resources[i].buffers[1] && engine->resources[i].buffers[1] != engine->resources[i].buffers[0]) {
             sf_buffer_free(engine->resources[i].buffers[1]);
@@ -180,24 +173,53 @@ void sf_engine_dispatch(sf_engine* engine) {
             t->byte_offset = 0;
         }
         
-        // 3. Execution
+        // 2. Execution & Barrier Planning
         for (u32 f = 0; f < ker->frequency; ++f) {
             if (engine->backend.dispatch) {
                 ker->state.global_error_ptr = &engine->error_code;
                 for (u32 t = 0; t < ker->program->meta.task_count; ++t) {
                     const sf_task* task = &ker->program->tasks[t];
+                    
+                    if (task->flags & SF_TASK_FLAG_BARRIER) {
+                        sf_backend_barrier(&engine->backend);
+                    }
+
                     const sf_tensor* task_domain = &ker->state.registers[task->domain_reg];
                     size_t domain_elements = sf_tensor_count(task_domain);
 
-                    // Pre-calculate strides for this task
+                    // 3. Pre-calculate N-D strides for this task
                     for (u32 b = 0; b < task->binding_count; ++b) {
                         u16 reg_idx = ker->program->bindings[task->binding_offset + b].reg_idx;
                         sf_tensor* reg = &ker->state.registers[reg_idx];
-                        size_t reg_elements = sf_tensor_count(reg);
-                        i32 elem_stride = sf_shape_calc_linear_stride(reg_elements, domain_elements);
-                        ker->state.task_strides[reg_idx] = elem_stride * (i32)sf_dtype_size(reg->info.dtype);
+                        
+                        int32_t* strides_ptr = &ker->state.task_strides[reg_idx * SF_MAX_DIMS];
+                        sf_shape_get_broadcast_strides(&reg->info, &task_domain->info, strides_ptr);
+                        
+                        // Convert element strides to byte strides
+                        i32 dtype_sz = (i32)sf_dtype_size(reg->info.dtype);
+                        for (int d = 0; d < SF_MAX_DIMS; ++d) strides_ptr[d] *= dtype_sz;
                     }
 
+                    // 4. Calculate Execution Grid
+                    sf_grid grid = {0};
+                    u8 ndim = task_domain->info.ndim;
+                    if (ndim <= 1) {
+                        grid.dims[0] = 1;
+                        grid.tile_shape[0] = (u32)domain_elements;
+                        grid.total_tiles = 1;
+                    } else {
+                        // Multi-D: Tile by rows (all dimensions except the last one)
+                        grid.total_tiles = 1;
+                        for (int d = 0; d < ndim - 1; ++d) {
+                            grid.dims[d] = task_domain->info.shape[d];
+                            grid.tile_shape[d] = 1;
+                            grid.total_tiles *= grid.dims[d];
+                        }
+                        grid.dims[ndim - 1] = 1;
+                        grid.tile_shape[ndim - 1] = task_domain->info.shape[ndim - 1];
+                    }
+
+                    ker->state.grid = grid;
                     engine->backend.dispatch(engine->backend.state, ker->program, &ker->state, task_domain, task);
                     if (sf_atomic_load(&engine->error_code) != 0) goto end_dispatch;
                 }
@@ -280,21 +302,15 @@ sf_engine_error sf_engine_get_error(sf_engine* engine) {
 }
 
 void sf_engine_iterate_resources(sf_engine* engine, sf_engine_resource_cb cb, void* user_data) {
-
     if (!engine || !cb) return;
-
     for (u32 i = 0; i < engine->resource_count; ++i) {
-
         sf_resource_inst* res = &engine->resources[i];
-
         res->desc.buffer = res->buffers[engine->front_idx];
-
         res->desc.byte_offset = 0;
-
         cb(res->name, &res->desc, user_data);
-
     }
-
 }
+
+
 
 
