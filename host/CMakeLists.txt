@@ -13,11 +13,16 @@ add_library(SionFlow::host_core ALIAS host_core)
 target_include_directories(host_core 
     PUBLIC 
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        $<INSTALL_INTERFACE:include>
     PRIVATE 
         src
-        ${Stb_INCLUDE_DIR}
 )
+
+# Link against internal modules - CMake will handle include paths
+target_link_libraries(host_core PUBLIC SionFlow::isa SionFlow::base)
+
+# External dependencies
+find_package(Stb REQUIRED)
+target_include_directories(host_core PRIVATE ${Stb_INCLUDE_DIR})
 target_link_libraries(host_core 
     PUBLIC
         SionFlow::engine

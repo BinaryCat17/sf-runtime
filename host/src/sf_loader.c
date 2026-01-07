@@ -82,9 +82,30 @@ static sf_program* _load_program_from_mem(const u8* data, size_t len, sf_arena* 
         prog->tensor_flags[i] = d->flags;
     }
 
-    // 6. Constant Data
+    // 6. Push Constant Block
+    if (head->push_constants_size > 0) {
+        if (offset + head->push_constants_size > len) return NULL;
+        void* pc_mem = SF_ARENA_PUSH(arena, u8, head->push_constants_size);
+        if (!pc_mem) return NULL;
+        memcpy(pc_mem, data + offset, head->push_constants_size);
+        prog->push_constants_data = pc_mem;
+        offset += head->push_constants_size;
+        
+        // Distribute pointers to scalar constants
+        u32 pc_offset = 0;
+        for (u32 i = 0; i < n; ++i) {
+            if (prog->tensor_infos[i].ndim == 0 && descs[i].is_constant) {
+                prog->tensor_data[i] = (u8*)pc_mem + pc_offset;
+                pc_offset += (u32)sf_dtype_size(prog->tensor_infos[i].dtype);
+            }
+        }
+    } else {
+        prog->push_constants_data = NULL;
+    }
+
+    // 7. Remaining Constant Data (Non-scalars)
     for (u32 i = 0; i < head->tensor_count; ++i) {
-        if (descs[i].is_constant) {
+        if (descs[i].is_constant && prog->tensor_infos[i].ndim > 0) {
             size_t bytes = sf_shape_calc_bytes(prog->tensor_infos[i].dtype, prog->tensor_infos[i].shape, prog->tensor_infos[i].ndim);
             if (offset + bytes > len) return NULL;
             void* mem = SF_ARENA_PUSH(arena, u8, bytes);
@@ -92,7 +113,9 @@ static sf_program* _load_program_from_mem(const u8* data, size_t len, sf_arena* 
             memcpy(mem, data + offset, bytes);
             prog->tensor_data[i] = mem;
             offset += bytes;
-        } else prog->tensor_data[i] = NULL;
+        } else if (prog->tensor_infos[i].ndim > 0) {
+            prog->tensor_data[i] = NULL;
+        }
     }
 
     return prog;

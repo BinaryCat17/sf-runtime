@@ -13,6 +13,16 @@
       "kind": "filesystem",
       "path": "../sf-compiler/vcpkg-ports",
       "packages": [ "sf-compiler" ]
+    },
+    {
+      "kind": "filesystem",
+      "path": "vcpkg-ports",
+      "packages": [ "sf-runtime" ]
+    },
+    {
+      "kind": "filesystem",
+      "path": "../sf-backend-cpu/vcpkg-ports",
+      "packages": [ "sf-backend-cpu" ]
     }
   ]
 }
