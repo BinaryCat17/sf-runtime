@@ -124,18 +124,26 @@ sf_engine* sf_engine_create(const sf_engine_desc* desc) {
 void sf_engine_destroy(sf_engine* engine) {
     if (!engine) return;
     sf_engine_reset(engine);
-    if (engine->backend.shutdown) engine->backend.shutdown(engine->backend.state);
     if (engine->heap_buffer) free(engine->heap_buffer);
     if (engine->arena_buffer) free(engine->arena_buffer);
     free(engine);
 }
 
 void sf_engine_reset(sf_engine* engine) {
+
     if (!engine) return;
+
     for (u32 i = 0; i < engine->kernel_count; ++i) {
+
         sf_state_shutdown(&engine->kernels[i].state, &engine->backend);
+
     }
+
     for (u32 i = 0; i < engine->resource_count; ++i) {
+
+
+
+
         if (engine->resources[i].buffers[0]) sf_buffer_free(engine->resources[i].buffers[0]);
         if (engine->resources[i].buffers[1] && engine->resources[i].buffers[1] != engine->resources[i].buffers[0]) {
             sf_buffer_free(engine->resources[i].buffers[1]);
@@ -272,11 +280,21 @@ sf_engine_error sf_engine_get_error(sf_engine* engine) {
 }
 
 void sf_engine_iterate_resources(sf_engine* engine, sf_engine_resource_cb cb, void* user_data) {
+
     if (!engine || !cb) return;
+
     for (u32 i = 0; i < engine->resource_count; ++i) {
+
         sf_resource_inst* res = &engine->resources[i];
+
         res->desc.buffer = res->buffers[engine->front_idx];
+
         res->desc.byte_offset = 0;
+
         cb(res->name, &res->desc, user_data);
+
     }
+
 }
+
+
