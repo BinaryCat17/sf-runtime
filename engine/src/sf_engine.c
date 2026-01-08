@@ -14,54 +14,59 @@ void sf_state_reset(sf_state* state, const sf_program* prog, sf_arena* arena, sf
     
     state->register_count = prog->meta.tensor_count;
     
-    // Consolidate allocations: registers + ownership flags + task_strides (N-D)
-    size_t regs_sz = sizeof(sf_tensor) * state->register_count;
-    size_t flags_sz = sizeof(uint8_t) * state->register_count;
-    size_t strides_sz = sizeof(int32_t) * state->register_count * SF_MAX_DIMS;
-    u8* block = SF_ARENA_PUSH(arena, u8, regs_sz + flags_sz + strides_sz);
+    // Consolidate allocations: pointers + info + ownership flags
+        size_t ptrs_sz = sizeof(void*) * state->register_count;
+        size_t ndims_sz = sizeof(uint8_t) * state->register_count;
+        size_t dtypes_sz = sizeof(uint8_t) * state->register_count;
+        size_t shapes_sz = sizeof(int32_t) * state->register_count * SF_MAX_DIMS;
+        size_t flags_sz = sizeof(uint8_t) * state->register_count;
     
-    if (!block) {
-        SF_LOG_ERROR("Engine: Failed to allocate registers for kernel state. Arena OOM.");
-        state->register_count = 0;
-        state->registers = NULL;
-        state->ownership_flags = NULL;
-        state->task_strides = NULL;
-        return;
-    }
-    
-    state->registers = (sf_tensor*)block;
-    state->ownership_flags = (uint8_t*)(block + regs_sz);
-    state->task_strides = (int32_t*)(block + regs_sz + flags_sz);
-    
-    memset(state->ownership_flags, 0, state->register_count);
-    memset(state->task_strides, 0, strides_sz);
-
-    for (u32 i = 0; i < state->register_count; ++i) {
-        sf_type_info* info_prog = &prog->tensor_infos[i];
-        void* data_prog = prog->tensor_data[i];
-        sf_tensor* t_reg = &state->registers[i];
-        uint8_t flags = prog->tensor_flags[i];
+        u8* block = SF_ARENA_PUSH(arena, u8, ptrs_sz + ndims_sz + dtypes_sz + shapes_sz + flags_sz);
         
-        t_reg->info = *info_prog;
-        t_reg->byte_offset = 0;
-        t_reg->buffer = NULL;
-
-        if (data_prog) {
-            t_reg->buffer = state->allocator->alloc(state->allocator, sizeof(sf_buffer));
-            sf_buffer_init_view(t_reg->buffer, data_prog, sf_shape_calc_bytes(info_prog->dtype, info_prog->shape, info_prog->ndim));
-            state->ownership_flags[i] = 1; // Mark for cleanup
+        if (!block) {
+            SF_LOG_ERROR("Engine: Failed to allocate kernel state. Arena OOM.");
+            state->register_count = 0;
+            state->reg_data = NULL;
+            state->reg_ndims = NULL;
+            state->reg_dtypes = NULL;
+            state->reg_shapes = NULL;
+            state->ownership_flags = NULL;
+            return;
+        }
+        
+        state->reg_data = (void**)block;
+        state->reg_ndims = (uint8_t*)(block + ptrs_sz);
+        state->reg_dtypes = (uint8_t*)(block + ptrs_sz + ndims_sz);
+        state->reg_shapes = (int32_t*)(block + ptrs_sz + ndims_sz + dtypes_sz);
+        state->ownership_flags = (uint8_t*)(block + ptrs_sz + ndims_sz + dtypes_sz + shapes_sz);
+        
+        memset(state->reg_data, 0, ptrs_sz);
+        memset(state->ownership_flags, 0, flags_sz);
+    
+        for (u32 i = 0; i < state->register_count; ++i) {
+            sf_type_info* info_prog = &prog->tensor_infos[i];
+            void* data_prog = prog->tensor_data[i];
+            uint8_t flags = prog->tensor_flags[i];
+            
+            state->reg_ndims[i] = info_prog->ndim;
+            state->reg_dtypes[i] = (uint8_t)info_prog->dtype;
+            memcpy(&state->reg_shapes[i * SF_MAX_DIMS], info_prog->shape, sizeof(i32) * SF_MAX_DIMS);
+    
+            if (data_prog) {
+            state->reg_data[i] = data_prog;
+            state->ownership_flags[i] = 0; // Constants are not owned by state (owned by program)
         } else {
             // Pre-allocate only non-alias, non-generator static tensors
             if (!(flags & SF_TENSOR_FLAG_ALIAS) && !(flags & SF_TENSOR_FLAG_GENERATOR)) {
                 bool is_static = true;
-                for (int d = 0; d < t_reg->info.ndim; ++d) if (t_reg->info.shape[d] < 0) { is_static = false; break; }
+                for (int d = 0; d < info_prog->ndim; ++d) if (info_prog->shape[d] < 0) { is_static = false; break; }
                 if (is_static) {
-                    t_reg->buffer = state->allocator->alloc(state->allocator, sizeof(sf_buffer));
-                    if (sf_tensor_alloc(t_reg, state->allocator, &t_reg->info)) {
-                        state->ownership_flags[i] = 1;
-                    } else {
-                        state->allocator->free(state->allocator, t_reg->buffer);
-                        t_reg->buffer = NULL;
+                    size_t bytes = sf_shape_calc_bytes(info_prog->dtype, info_prog->shape, info_prog->ndim);
+                    if (bytes > 0) {
+                        state->reg_data[i] = state->allocator->alloc(state->allocator, bytes);
+                        if (state->reg_data[i]) {
+                            state->ownership_flags[i] = 1;
+                        }
                     }
                 }
             }
@@ -75,7 +80,7 @@ void sf_state_reset(sf_state* state, const sf_program* prog, sf_arena* arena, sf
 }
 
 static void sf_state_shutdown(sf_state* state, sf_backend* backend) {
-    if (!state->registers || !state->allocator) return;
+    if (!state->reg_data || !state->allocator) return;
     
     if (backend && backend->free_baked && state->baked_data) {
         backend->free_baked(backend->state, state->baked_data);
@@ -84,11 +89,9 @@ static void sf_state_shutdown(sf_state* state, sf_backend* backend) {
 
     for (u32 i = 0; i < state->register_count; ++i) {
         if (state->ownership_flags && state->ownership_flags[i]) {
-            sf_tensor* t = &state->registers[i];
-            if (t->buffer) {
-                sf_buffer_free(t->buffer); 
-                state->allocator->free(state->allocator, t->buffer);
-                t->buffer = NULL;
+            if (state->reg_data[i]) {
+                state->allocator->free(state->allocator, state->reg_data[i]);
+                state->reg_data[i] = NULL;
             }
         }
     }
@@ -167,10 +170,12 @@ void sf_engine_dispatch(sf_engine* engine) {
         for (u32 b = 0; b < ker->binding_count; ++b) {
             sf_kernel_binding* bind = &ker->bindings[b];
             sf_resource_inst* res = &engine->resources[bind->global_res];
-            sf_tensor* t = &ker->state.registers[bind->local_reg];
-            *t = res->desc;
-            t->buffer = (bind->flags & SF_SYMBOL_FLAG_OUTPUT) ? res->buffers[back] : res->buffers[front];
-            t->byte_offset = 0;
+            
+            sf_buffer* buf = (bind->flags & SF_SYMBOL_FLAG_OUTPUT) ? res->buffers[back] : res->buffers[front];
+            ker->state.reg_data[bind->local_reg] = buf ? buf->data : NULL;
+            ker->state.reg_ndims[bind->local_reg] = res->desc.info.ndim;
+            ker->state.reg_dtypes[bind->local_reg] = (uint8_t)res->desc.info.dtype;
+            memcpy(&ker->state.reg_shapes[bind->local_reg * SF_MAX_DIMS], res->desc.info.shape, sizeof(i32) * SF_MAX_DIMS);
         }
         
         // 2. Execution & Barrier Planning
@@ -184,43 +189,8 @@ void sf_engine_dispatch(sf_engine* engine) {
                         sf_backend_barrier(&engine->backend);
                     }
 
-                    const sf_tensor* task_domain = &ker->state.registers[task->domain_reg];
-                    size_t domain_elements = sf_tensor_count(task_domain);
-
-                    // 3. Pre-calculate N-D strides for this task
-                    for (u32 b = 0; b < task->binding_count; ++b) {
-                        u16 reg_idx = ker->program->bindings[task->binding_offset + b].reg_idx;
-                        sf_tensor* reg = &ker->state.registers[reg_idx];
-                        
-                        int32_t* strides_ptr = &ker->state.task_strides[reg_idx * SF_MAX_DIMS];
-                        sf_shape_get_broadcast_strides(&reg->info, &task_domain->info, strides_ptr);
-                        
-                        // Convert element strides to byte strides
-                        i32 dtype_sz = (i32)sf_dtype_size(reg->info.dtype);
-                        for (int d = 0; d < SF_MAX_DIMS; ++d) strides_ptr[d] *= dtype_sz;
-                    }
-
-                    // 4. Calculate Execution Grid
-                    sf_grid grid = {0};
-                    u8 ndim = task_domain->info.ndim;
-                    if (ndim <= 1) {
-                        grid.dims[0] = 1;
-                        grid.tile_shape[0] = (u32)domain_elements;
-                        grid.total_tiles = 1;
-                    } else {
-                        // Multi-D: Tile by rows (all dimensions except the last one)
-                        grid.total_tiles = 1;
-                        for (int d = 0; d < ndim - 1; ++d) {
-                            grid.dims[d] = task_domain->info.shape[d];
-                            grid.tile_shape[d] = 1;
-                            grid.total_tiles *= grid.dims[d];
-                        }
-                        grid.dims[ndim - 1] = 1;
-                        grid.tile_shape[ndim - 1] = task_domain->info.shape[ndim - 1];
-                    }
-
-                    ker->state.grid = grid;
-                    engine->backend.dispatch(engine->backend.state, ker->program, &ker->state, task_domain, task);
+                    // 3. Task specific state is ephemeral and managed by Backend dispatch
+                    engine->backend.dispatch(engine->backend.state, ker->program, &ker->state, NULL, task);
                     if (sf_atomic_load(&engine->error_code) != 0) goto end_dispatch;
                 }
             }
@@ -259,7 +229,7 @@ bool sf_engine_resize_resource(sf_engine* engine, const char* name, const int32_
     sf_allocator* alloc = (sf_allocator*)&engine->heap;
     
     sf_type_info new_info;
-    sf_type_info_init_contiguous(&new_info, res->desc.info.dtype, new_shape, new_ndim);
+    sf_type_info_init_contiguous(&new_info, (sf_dtype)res->desc.info.dtype, new_shape, new_ndim);
     size_t new_bytes = sf_shape_calc_count(new_shape, new_ndim) * sf_dtype_size(new_info.dtype);
     
     if (res->size_bytes != new_bytes) {

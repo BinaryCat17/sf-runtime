@@ -9,20 +9,29 @@
 #include <time.h>
 #include <stdio.h>
 
+#ifdef _WIN32
+#include <process.h>
+#define getpid _getpid
+#else
+#include <unistd.h>
+#endif
+
 void sf_host_init_logger(void) {
-    if (sf_fs_mkdir("logs")) {
-        sf_fs_clear_dir("logs"); 
-    }
+    sf_fs_mkdir("logs");
 
     sf_log_init();
 
     time_t now = time(NULL);
     struct tm* t = localtime(&now);
-    char log_path[256];
+    char log_path[512];
+    int pid = (int)getpid();
+
     if (t) {
-        strftime(log_path, sizeof(log_path), "logs/log_%Y-%m-%d_%H-%M-%S.txt", t);
+        char time_str[256];
+        strftime(time_str, sizeof(time_str), "logs/log_%Y-%m-%d_%H-%M-%S", t);
+        snprintf(log_path, sizeof(log_path), "%s_%d.txt", time_str, pid);
     } else {
-        strcpy(log_path, "logs/latest_log.txt");
+        snprintf(log_path, sizeof(log_path), "logs/latest_log_%d.txt", pid);
     }
     
     sf_log_add_file_sink(log_path, SF_LOG_LEVEL_TRACE);
